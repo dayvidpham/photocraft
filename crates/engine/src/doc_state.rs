@@ -191,8 +191,14 @@ impl ToolState {
     pub fn remember_cmyk(&mut self, rgb: [f32; 3], cmyk: [f32; 4]) {
         self.cmyk_picks.retain(|(c, _)| *c != rgb);
         self.cmyk_picks.push((rgb, cmyk));
-        let extra = self.cmyk_picks.len().saturating_sub(Self::CMYK_PICKS);
-        self.cmyk_picks.drain(..extra);
+        // Evict history, not an active tool colour: a foreground edit must not throw away the
+        // background's inks, or a later background fill converts the sRGB stand-in (#9037).
+        let fg = [self.foreground[0], self.foreground[1], self.foreground[2]];
+        let bg = [self.background[0], self.background[1], self.background[2]];
+        while self.cmyk_picks.len() > Self::CMYK_PICKS {
+            let Some(oldest) = self.cmyk_picks.iter().position(|(c, _)| *c != rgb && *c != fg && *c != bg) else { break };
+            self.cmyk_picks.remove(oldest);
+        }
     }
 
     /// The inks `rgb` was picked as, if it was picked as CMYK.
